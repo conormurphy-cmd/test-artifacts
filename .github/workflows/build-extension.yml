@@ -1,0 +1,154 @@
+name: Build & Release Chrome Extension
+
+# Trigger by pushing a tag in the format: <extension-name>/v<semver>
+# e.g.  git tag hello-world/v1.0.0 && git push origin hello-world/v1.0.0
+on:
+  push:
+    tags:
+      - '*/v[0-9]*.[0-9]*.[0-9]*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create releases and push README update
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout full history so we can push back to main later
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # -----------------------------------------------------------------------
+      # 2. Parse the tag into extension name + semver version
+      #    Tag format: hello-world/v1.2.3
+      #    Outputs:
+      #      extension  = hello-world
+      #      version    = v1.2.3
+      #      asset_name = hello-world-v1.2.3.zip
+      # -----------------------------------------------------------------------
+      - name: Parse tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          EXTENSION="${TAG%/v*}"
+          VERSION="v${TAG#*/v}"
+          ASSET="${EXTENSION}-${VERSION}.zip"
+          echo "extension=$EXTENSION"  >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"      >> "$GITHUB_OUTPUT"
+          echo "asset=$ASSET"          >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"              >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # 3. Validate the extension directory exists
+      # -----------------------------------------------------------------------
+      - name: Validate extension directory
+        run: |
+          DIR="extensions/${{ steps.tag.outputs.extension }}"
+          if [ ! -d "$DIR" ]; then
+            echo "Error: directory '$DIR' not found in repo."
+            exit 1
+          fi
+          if [ ! -f "$DIR/manifest.json" ]; then
+            echo "Error: '$DIR/manifest.json' not found."
+            exit 1
+          fi
+          echo "Extension directory OK: $DIR"
+
+      # -----------------------------------------------------------------------
+      # 4. Stamp the semver into manifest.json so the built artefact is correct
+      # -----------------------------------------------------------------------
+      - name: Stamp version into manifest.json
+        run: |
+          SEMVER="${{ steps.tag.outputs.version }}"
+          SEMVER="${SEMVER#v}"   # strip leading 'v' — manifest wants '1.2.3'
+          jq --arg v "$SEMVER" '.version = $v' \
+            extensions/${{ steps.tag.outputs.extension }}/manifest.json \
+            > /tmp/manifest.json
+          mv /tmp/manifest.json extensions/${{ steps.tag.outputs.extension }}/manifest.json
+          echo "manifest.json stamped with version $SEMVER"
+
+      # -----------------------------------------------------------------------
+      # 5. Build — zip the extension directory
+      #    Chrome extensions are distributed as .zip for Web Store / side-loading.
+      #    For enterprise .crx deployment, the zip can be repacked with a key.
+      # -----------------------------------------------------------------------
+      - name: Build extension zip
+        run: |
+          cd extensions/${{ steps.tag.outputs.extension }}
+          zip -r "../../${{ steps.tag.outputs.asset }}" . \
+            --exclude "*.DS_Store" \
+            --exclude "__MACOSX/*"
+          echo "Built: ${{ steps.tag.outputs.asset }}"
+          ls -lh "../../${{ steps.tag.outputs.asset }}"
+        working-directory: ${{ github.workspace }}
+
+      # -----------------------------------------------------------------------
+      # 6. Create GitHub Release and upload the zip as a release asset
+      # -----------------------------------------------------------------------
+      - name: Create GitHub Release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            "${{ steps.tag.outputs.asset }}" \
+            --title "${{ steps.tag.outputs.extension }} ${{ steps.tag.outputs.version }}" \
+            --notes "## ${{ steps.tag.outputs.extension }} ${{ steps.tag.outputs.version }}
+
+          Automated release built by GitHub Actions.
+
+          ### Installation
+          1. Download the zip below and extract it.
+          2. Open Chrome and navigate to \`chrome://extensions\`.
+          3. Enable **Developer mode** (top-right toggle).
+          4. Click **Load unpacked** and select the extracted folder." \
+            --latest
+
+      # -----------------------------------------------------------------------
+      # 7. Fetch the download URL of the uploaded asset
+      # -----------------------------------------------------------------------
+      - name: Get asset download URL
+        id: asset_url
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          URL=$(gh release view "${{ steps.tag.outputs.tag }}" \
+            --json assets \
+            --jq '.assets[] | select(.name == "${{ steps.tag.outputs.asset }}") | .browserDownloadUrl')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Download URL: $URL"
+
+      # -----------------------------------------------------------------------
+      # 8. Switch to main, update the README table, and push
+      # -----------------------------------------------------------------------
+      - name: Update README on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Switch to main (the tag checkout leaves us in detached HEAD)
+          git fetch origin main
+          git checkout main
+          git pull origin main
+
+          # Run the README updater
+          python3 scripts/update_readme.py \
+            "${{ steps.tag.outputs.extension }}" \
+            "${{ steps.tag.outputs.version }}" \
+            "${{ steps.asset_url.outputs.url }}"
+
+          # Commit and push only if README changed
+          if git diff --quiet README.md; then
+            echo "README.md unchanged — nothing to commit."
+          else
+            git add README.md
+            git commit -m "docs: update download link — ${{ steps.tag.outputs.extension }} ${{ steps.tag.outputs.version }}"
+            git push origin main
+          fi
