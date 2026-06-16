@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 2   # need parent commit to diff against
 
@@ -75,7 +75,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate manifest.json — ${{ matrix.extension }}
         run: |
@@ -122,7 +122,7 @@ jobs:
           echo "✅ Build successful — ${{ matrix.extension }}-ci.zip ($SIZE)"
 
       - name: Upload build artifact — ${{ matrix.extension }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.extension }}-ci-build
           path: ${{ matrix.extension }}-ci.zip
