@@ -120,10 +120,7 @@ jobs:
       - name: Construct asset download URL
         id: asset_url
         run: |
-          ENCODED_TAG=$(python3 -c \
-            "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
-            "${{ steps.tag.outputs.tag }}")
-          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${ENCODED_TAG}/${{ steps.tag.outputs.asset }}"
+          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/${{ steps.tag.outputs.asset }}"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "Download URL: $URL"
 
