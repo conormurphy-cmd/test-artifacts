@@ -7,7 +7,7 @@ Internal Chrome extensions for the trading team. Download links are updated auto
 <!-- EXTENSIONS_TABLE -->
 | Extension | Latest Version | Download |
 |-----------|---------------|----------|
-| Hello World | — | — |
+| Hello World | `v1.0.1` | [⬇️ Download](https://github.com/conormurphy-cmd/test-artifacts/releases/download/hello-world%2Fv1.0.1/hello-world-v1.0.1.zip) |
 <!-- /EXTENSIONS_TABLE -->
 
 ## Releasing a New Version
