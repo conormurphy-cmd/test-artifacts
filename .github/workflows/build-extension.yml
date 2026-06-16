@@ -110,16 +110,20 @@ jobs:
             --latest
 
       # -----------------------------------------------------------------------
-      # 7. Fetch the download URL of the uploaded asset
+      # 7. Construct the asset download URL directly from known values.
+      #    GitHub release download URLs are deterministic:
+      #      {server}/{repo}/releases/download/{url-encoded-tag}/{asset}
+      #    Tags containing '/' must be percent-encoded (%2F) in the URL.
+      #    We avoid querying the API here because gh release view does not
+      #    reliably resolve slashed tag names.
       # -----------------------------------------------------------------------
-      - name: Get asset download URL
+      - name: Construct asset download URL
         id: asset_url
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          URL=$(gh release view "${{ steps.tag.outputs.tag }}" \
-            --json assets \
-            --jq '.assets[] | select(.name == "${{ steps.tag.outputs.asset }}") | .browserDownloadUrl')
+          ENCODED_TAG=$(python3 -c \
+            "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+            "${{ steps.tag.outputs.tag }}")
+          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${ENCODED_TAG}/${{ steps.tag.outputs.asset }}"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "Download URL: $URL"
 

@@ -7,7 +7,7 @@ Internal Chrome extensions for the trading team. Download links are updated auto
 <!-- EXTENSIONS_TABLE -->
 | Extension | Latest Version | Download |
 |-----------|---------------|----------|
-| Hello World | `v1.0.0` | [⬇️ Download]() |
+| Hello World | — | — |
 <!-- /EXTENSIONS_TABLE -->
 
 ## Releasing a New Version
