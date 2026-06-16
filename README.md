@@ -8,7 +8,7 @@ Internal Chrome extensions for the trading team. Download links are updated auto
 | Extension | Latest Version | Download |
 |-----------|---------------|----------|
 | Hello World | `v1.0.2` | [⬇️ Download](https://github.com/conormurphy-cmd/test-artifacts/releases/download/hello-world/v1.0.2/hello-world-v1.0.2.zip) |
-| Price Ticker | — | — |
+| Price Ticker | `v1.0.0` | [⬇️ Download](https://github.com/conormurphy-cmd/test-artifacts/releases/download/price-ticker/v1.0.0/price-ticker-v1.0.0.zip) |
 <!-- /EXTENSIONS_TABLE -->
 
 ## Releasing a New Version
