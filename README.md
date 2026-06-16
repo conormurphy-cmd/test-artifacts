@@ -8,6 +8,7 @@ Internal Chrome extensions for the trading team. Download links are updated auto
 | Extension | Latest Version | Download |
 |-----------|---------------|----------|
 | Hello World | `v1.0.2` | [⬇️ Download](https://github.com/conormurphy-cmd/test-artifacts/releases/download/hello-world/v1.0.2/hello-world-v1.0.2.zip) |
+| Price Ticker | — | — |
 <!-- /EXTENSIONS_TABLE -->
 
 ## Releasing a New Version
@@ -43,19 +44,34 @@ The pipeline will automatically:
    ```
 4. Tag a release — the pipeline will populate the download link automatically.
 
+## Workflows
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| `ci-extensions.yml` | Push / PR to `main` affecting `extensions/**` | Detects which extension directories changed, validates and builds **only those** |
+| `build-extension.yml` | Tag push `<extension>/v*.*.*` | Builds the tagged extension, creates a GitHub Release, updates this README |
+
+The CI workflow uses a matrix job — if you change `hello-world` and `price-ticker` in the same commit, both are validated in parallel. If you only change `hello-world`, `price-ticker` is never touched.
+
 ## Repository Structure
 
 ```
 .
 ├── extensions/
-│   └── hello-world/          # Example extension
+│   ├── hello-world/           # Example extension (green)
+│   │   ├── manifest.json
+│   │   ├── popup.html
+│   │   ├── popup.js
+│   │   └── icons/
+│   └── price-ticker/          # Example extension (blue)
 │       ├── manifest.json
 │       ├── popup.html
 │       ├── popup.js
 │       └── icons/
 ├── scripts/
-│   └── update_readme.py      # README updater (called by CI)
+│   └── update_readme.py       # README updater (called by release pipeline)
 └── .github/
     └── workflows/
-        └── build-extension.yml
+        ├── ci-extensions.yml  # CI — validates changed extensions only
+        └── build-extension.yml # CD — builds and releases a tagged extension
 ```

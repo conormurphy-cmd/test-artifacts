@@ -1,0 +1,129 @@
+name: CI — Validate Changed Extensions
+
+# Runs on every push to main or on pull requests.
+# Detects which extension directories changed and validates only those —
+# other extensions are untouched regardless of how many exist in the repo.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'extensions/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'extensions/**'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Work out which extensions actually changed in this push/PR.
+  # Outputs a JSON array, e.g. ["hello-world"] or ["hello-world","price-ticker"]
+  # ---------------------------------------------------------------------------
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      extensions: ${{ steps.detect.outputs.extensions }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need parent commit to diff against
+
+      - name: Detect changed extension directories
+        id: detect
+        run: |
+          # On a PR, diff against the base branch; on a push, diff against parent commit
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="HEAD~1"
+          fi
+
+          echo "Diffing against: $BASE"
+
+          # Find unique top-level extension directory names that changed
+          CHANGED=$(git diff --name-only "$BASE" HEAD \
+            | grep '^extensions/' \
+            | cut -d'/' -f2 \
+            | sort -u \
+            | jq -R . \
+            | jq -sc .)
+
+          echo "Changed extensions: $CHANGED"
+          echo "extensions=$CHANGED" >> "$GITHUB_OUTPUT"
+
+          if [ "$CHANGED" = "[]" ] || [ -z "$CHANGED" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Build each changed extension in parallel via matrix.
+  # Skipped entirely if nothing under extensions/ changed.
+  # ---------------------------------------------------------------------------
+  validate:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false   # validate all changed extensions even if one fails
+      matrix:
+        extension: ${{ fromJson(needs.detect-changes.outputs.extensions) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate manifest.json — ${{ matrix.extension }}
+        run: |
+          DIR="extensions/${{ matrix.extension }}"
+
+          if [ ! -f "$DIR/manifest.json" ]; then
+            echo "❌ manifest.json not found in $DIR"
+            exit 1
+          fi
+
+          # Check it is valid JSON
+          jq empty "$DIR/manifest.json" || { echo "❌ manifest.json is not valid JSON"; exit 1; }
+
+          # Check required MV3 fields are present
+          MV=$(jq -r '.manifest_version' "$DIR/manifest.json")
+          NAME=$(jq -r '.name' "$DIR/manifest.json")
+          VERSION=$(jq -r '.version' "$DIR/manifest.json")
+
+          if [ "$MV" != "3" ]; then
+            echo "❌ manifest_version must be 3 (got $MV)"
+            exit 1
+          fi
+
+          if [ -z "$NAME" ] || [ "$NAME" = "null" ]; then
+            echo "❌ 'name' field missing from manifest.json"
+            exit 1
+          fi
+
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "❌ 'version' field missing from manifest.json"
+            exit 1
+          fi
+
+          echo "✅ manifest.json valid — name: $NAME, version: $VERSION, mv: $MV"
+
+      - name: Build zip — ${{ matrix.extension }}
+        run: |
+          cd extensions/${{ matrix.extension }}
+          zip -r "../../${{ matrix.extension }}-ci.zip" . \
+            --exclude "*.DS_Store" \
+            --exclude "__MACOSX/*"
+
+          SIZE=$(du -sh "../../${{ matrix.extension }}-ci.zip" | cut -f1)
+          echo "✅ Build successful — ${{ matrix.extension }}-ci.zip ($SIZE)"
+
+      - name: Upload build artifact — ${{ matrix.extension }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.extension }}-ci-build
+          path: ${{ matrix.extension }}-ci.zip
+          retention-days: 7
