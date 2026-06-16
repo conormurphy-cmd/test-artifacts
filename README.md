@@ -7,8 +7,8 @@ Internal Chrome extensions for the trading team. Download links are updated auto
 <!-- EXTENSIONS_TABLE -->
 | Extension | Latest Version | Download |
 |-----------|---------------|----------|
-| Hello World | `v1.0.2` | [⬇️ Download](https://github.com/conormurphy-cmd/test-artifacts/releases/download/hello-world/v1.0.2/hello-world-v1.0.2.zip) |
-| Price Ticker | `v1.0.0` | [⬇️ Download](https://github.com/conormurphy-cmd/test-artifacts/releases/download/price-ticker/v1.0.0/price-ticker-v1.0.0.zip) |
+| Hello World | — | — |
+| Price Ticker | — | — |
 <!-- /EXTENSIONS_TABLE -->
 
 ## Releasing a New Version
@@ -24,8 +24,9 @@ git push origin hello-world/v1.0.0
 The pipeline will automatically:
 1. Stamp the version into `manifest.json`
 2. Build a `.zip` artefact
-3. Create a GitHub Release with the zip attached
-4. Update the download link in this README
+3. Create a versioned GitHub Release (e.g. `hello-world/v1.0.3`) — permanent record
+4. Create/update a stable `hello-world/latest` release — the download URL in this README never changes
+5. Update the version number shown in this README
 
 ## Installing an Extension (Developer Mode)
 

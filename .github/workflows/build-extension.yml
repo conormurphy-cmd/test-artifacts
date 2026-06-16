@@ -27,9 +27,11 @@ jobs:
       # 2. Parse the tag into extension name + semver version
       #    Tag format: hello-world/v1.2.3
       #    Outputs:
-      #      extension  = hello-world
-      #      version    = v1.2.3
-      #      asset_name = hello-world-v1.2.3.zip
+      #      extension    = hello-world
+      #      version      = v1.2.3
+      #      asset        = hello-world-v1.2.3.zip   (versioned)
+      #      latest_tag   = hello-world/latest
+      #      latest_asset = hello-world-latest.zip   (stable, always current)
       # -----------------------------------------------------------------------
       - name: Parse tag
         id: tag
@@ -37,11 +39,12 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           EXTENSION="${TAG%/v*}"
           VERSION="v${TAG#*/v}"
-          ASSET="${EXTENSION}-${VERSION}.zip"
-          echo "extension=$EXTENSION"  >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION"      >> "$GITHUB_OUTPUT"
-          echo "asset=$ASSET"          >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG"              >> "$GITHUB_OUTPUT"
+          echo "extension=$EXTENSION"                    >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"                        >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"                                >> "$GITHUB_OUTPUT"
+          echo "asset=${EXTENSION}-${VERSION}.zip"       >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${EXTENSION}/latest"          >> "$GITHUB_OUTPUT"
+          echo "latest_asset=${EXTENSION}-latest.zip"   >> "$GITHUB_OUTPUT"
 
       # -----------------------------------------------------------------------
       # 3. Validate the extension directory exists
@@ -74,24 +77,27 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 5. Build — zip the extension directory
-      #    Chrome extensions are distributed as .zip for Web Store / side-loading.
-      #    For enterprise .crx deployment, the zip can be repacked with a key.
+      #    Produces two zips:
+      #      hello-world-v1.2.3.zip  — versioned, attached to the semver release
+      #      hello-world-latest.zip  — stable name, attached to the latest release
       # -----------------------------------------------------------------------
       - name: Build extension zip
         run: |
           cd extensions/${{ steps.tag.outputs.extension }}
-          zip -r "../../${{ steps.tag.outputs.asset }}" . \
+          zip -r "${{ github.workspace }}/${{ steps.tag.outputs.asset }}" . \
             --exclude "*.DS_Store" \
             --exclude "__MACOSX/*"
+          cp "${{ github.workspace }}/${{ steps.tag.outputs.asset }}" \
+             "${{ github.workspace }}/${{ steps.tag.outputs.latest_asset }}"
           echo "Built: ${{ steps.tag.outputs.asset }}"
-          ls -lh "../../${{ steps.tag.outputs.asset }}"
-        working-directory: ${{ github.workspace }}
+          echo "Built: ${{ steps.tag.outputs.latest_asset }}"
+          ls -lh "${{ github.workspace }}"/*.zip
 
       # -----------------------------------------------------------------------
-      # 6. Create GitHub Release and upload the zip as a release asset
+      # 6. Create the versioned GitHub Release (e.g. hello-world/v1.2.3)
+      #    This is the permanent, immutable record of each release.
       # -----------------------------------------------------------------------
-      - name: Create GitHub Release
-        id: release
+      - name: Create versioned release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -107,25 +113,53 @@ jobs:
           2. Open Chrome and navigate to \`chrome://extensions\`.
           3. Enable **Developer mode** (top-right toggle).
           4. Click **Load unpacked** and select the extracted folder." \
+            --latest=false
+
+      # -----------------------------------------------------------------------
+      # 7. Create/update the stable latest release (e.g. hello-world/latest)
+      #    This release is deleted and recreated on every new version so that
+      #    the download URL never changes — useful for scripted installs and
+      #    the README link, which always resolves to the current release.
+      # -----------------------------------------------------------------------
+      - name: Update latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG="${{ steps.tag.outputs.latest_tag }}"
+          LATEST_ASSET="${{ steps.tag.outputs.latest_asset }}"
+
+          # Remove old latest release + tag (ignore errors if first run)
+          gh release delete "$LATEST_TAG" --yes 2>/dev/null || true
+          git push origin ":refs/tags/${LATEST_TAG}" 2>/dev/null || true
+
+          # Force-create the tag at the current commit
+          git tag -f "$LATEST_TAG"
+          git push origin "refs/tags/${LATEST_TAG}" --force
+
+          # Create the fresh latest release
+          gh release create "$LATEST_TAG" \
+            "$LATEST_ASSET" \
+            --title "${{ steps.tag.outputs.extension }} (latest)" \
+            --notes "Always points to the latest version. Current: **${{ steps.tag.outputs.version }}**
+
+          The download URL for this release never changes — link to it directly or use it in install scripts." \
             --latest
 
       # -----------------------------------------------------------------------
-      # 7. Construct the asset download URL directly from known values.
-      #    GitHub release download URLs are deterministic:
-      #      {server}/{repo}/releases/download/{url-encoded-tag}/{asset}
-      #    Tags containing '/' must be percent-encoded (%2F) in the URL.
-      #    We avoid querying the API here because gh release view does not
-      #    reliably resolve slashed tag names.
+      # 8. The stable latest download URL is deterministic — no API call needed.
+      #    Format: {server}/{repo}/releases/download/{extension}/latest/{extension}-latest.zip
       # -----------------------------------------------------------------------
-      - name: Construct asset download URL
+      - name: Construct stable latest URL
         id: asset_url
         run: |
-          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/${{ steps.tag.outputs.asset }}"
+          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.tag.outputs.latest_tag }}/${{ steps.tag.outputs.latest_asset }}"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
-          echo "Download URL: $URL"
+          echo "Stable latest URL: $URL"
 
       # -----------------------------------------------------------------------
-      # 8. Switch to main, update the README table, and push
+      # 9. Switch to main, update the README table, and push.
+      #    The README link uses the stable latest URL so it never needs updating
+      #    again — only the displayed version number changes each release.
       # -----------------------------------------------------------------------
       - name: Update README on main
         env:
