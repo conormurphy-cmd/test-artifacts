@@ -14,25 +14,12 @@ jobs:
       contents: write   # needed to create releases and push README update
 
     steps:
-      # -----------------------------------------------------------------------
-      # 1. Checkout full history so we can push back to main later
-      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # -----------------------------------------------------------------------
-      # 2. Parse the tag into extension name + semver version
-      #    Tag format: hello-world/v1.2.3
-      #    Outputs:
-      #      extension    = hello-world
-      #      version      = v1.2.3
-      #      asset        = hello-world-v1.2.3.zip   (versioned)
-      #      latest_tag   = hello-world/latest
-      #      latest_asset = hello-world-latest.zip   (stable, always current)
-      # -----------------------------------------------------------------------
       - name: Parse tag
         id: tag
         run: |
@@ -46,9 +33,6 @@ jobs:
           echo "latest_tag=${EXTENSION}/latest"          >> "$GITHUB_OUTPUT"
           echo "latest_asset=${EXTENSION}-latest.zip"   >> "$GITHUB_OUTPUT"
 
-      # -----------------------------------------------------------------------
-      # 3. Validate the extension directory exists
-      # -----------------------------------------------------------------------
       - name: Validate extension directory
         run: |
           DIR="extensions/${{ steps.tag.outputs.extension }}"
@@ -62,9 +46,6 @@ jobs:
           fi
           echo "Extension directory OK: $DIR"
 
-      # -----------------------------------------------------------------------
-      # 4. Stamp the semver into manifest.json so the built artefact is correct
-      # -----------------------------------------------------------------------
       - name: Stamp version into manifest.json
         run: |
           SEMVER="${{ steps.tag.outputs.version }}"
